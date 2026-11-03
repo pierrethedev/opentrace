@@ -1,4 +1,3 @@
-
 package br.com.opentrace.opentrace.service;
 
 import java.util.ArrayList;
@@ -15,53 +14,58 @@ import org.xbill.DNS.Type;
 @Service
 public class DnsRecordsService {
 
-    public List<String> findMxRecords(String domain) {
-        List<String> results = new ArrayList<>();
-
-        try {
-            Lookup lookup = new Lookup(domain, Type.MX);
-            Record[] records = lookup.run();
-
-            if (records == null || lookup.getResult() != Lookup.SUCCESSFUL) {
-                return results;
-            }
-
-            for (Record record : records) {
-                MXRecord mx = (MXRecord) record;
-
-                results.add(
-                    mx.getPriority() + " " + mx.getTarget()
-                );
-            }
-
-        } catch (TextParseException e) {
-            return results;
-        }
-
-        return results;
+    public DnsQueryResult findMxRecords(String domain) {
+        return executeLookup(domain, Type.MX);
     }
 
-    public List<String> findNsRecords(String domain) {
+    public DnsQueryResult findNsRecords(String domain) {
+        return executeLookup(domain, Type.NS);
+    }
+
+    private DnsQueryResult executeLookup(String domain, int recordType) {
+
         List<String> results = new ArrayList<>();
 
         try {
-            Lookup lookup = new Lookup(domain, Type.NS);
+            Lookup lookup = new Lookup(domain, recordType);
             Record[] records = lookup.run();
 
-            if (records == null || lookup.getResult() != Lookup.SUCCESSFUL) {
-                return results;
+            int resultCode = lookup.getResult();
+
+            if (resultCode == Lookup.SUCCESSFUL && records != null) {
+
+                for (Record record : records) {
+
+                    if (record instanceof MXRecord mx) {
+                        results.add(
+                            mx.getPriority() + " " + mx.getTarget()
+                        );
+                    }
+
+                    if (record instanceof NSRecord ns) {
+                        results.add(ns.getTarget().toString());
+                    }
+                }
+
+                return new DnsQueryResult("SUCCESSFUL", results);
             }
 
-            for (Record record : records) {
-                NSRecord ns = (NSRecord) record;
-                results.add(ns.getTarget().toString());
+            if (resultCode == Lookup.TYPE_NOT_FOUND) {
+                return new DnsQueryResult("NO_RECORDS", results);
             }
+
+            if (resultCode == Lookup.HOST_NOT_FOUND) {
+                return new DnsQueryResult("HOST_NOT_FOUND", results);
+            }
+
+            if (resultCode == Lookup.TRY_AGAIN) {
+                return new DnsQueryResult("TRY_AGAIN", results);
+            }
+
+            return new DnsQueryResult("DNS_ERROR", results);
 
         } catch (TextParseException e) {
-            return results;
+            return new DnsQueryResult("INVALID_QUERY", results);
         }
-
-        return results;
     }
 }
-
